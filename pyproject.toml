@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eml-discover-server"
-version = "0.1.0"
-description = "FastAPI service wrapping eml_discover.identify."
+version = "0.2.0"
+description = "FastAPI service wrapping eml_discover.identify and eml_cost.analyze."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "PROPRIETARY-PRE-RELEASE" }
@@ -34,6 +34,7 @@ dependencies = [
     "fastapi>=0.110",
     "pydantic>=2.0",
     "sympy>=1.12",
+    "eml-cost>=0.2.0",
     "eml-discover>=0.2.0",
 ]
 

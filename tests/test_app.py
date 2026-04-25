@@ -22,6 +22,7 @@ def test_health_returns_ok(client: TestClient) -> None:
     assert body["status"] == "ok"
     assert "server_version" in body
     assert "discover_version" in body
+    assert "cost_version" in body
     assert body["registry_size"] >= 50   # eml-discover 0.2.0 ships 53
 
 
@@ -113,6 +114,50 @@ def test_identify_includes_rename_when_template_renaming_required(
     assert matches, "expected at least one match"
 
 
+# ---------- /analyze ---------------------------------------------------------
+
+
+def test_analyze_returns_pfaffian_profile(client: TestClient) -> None:
+    r = client.post("/analyze", json={"expr": "exp(sin(x))"})
+    assert r.status_code == 200
+    body = r.json()
+    # Every documented axis is present.
+    for key in (
+        "expression", "pfaffian_r", "max_path_r", "eml_depth",
+        "structural_overhead", "predicted_depth",
+        "is_pfaffian_not_eml", "fingerprint",
+        "server_version", "cost_version", "corrections",
+    ):
+        assert key in body, f"missing field: {key}"
+    # exp(sin(x)) has positive pfaffian_r (≥2 — composes sin and exp).
+    assert body["pfaffian_r"] >= 2
+    # corrections is a nested object with c_osc / c_composite / delta_fused.
+    assert set(body["corrections"]) == {"c_osc", "c_composite", "delta_fused"}
+    # fingerprint matches the canonical p…-d…-w…-c…-h<6hex> shape.
+    assert body["fingerprint"].startswith("p")
+    assert "-h" in body["fingerprint"]
+
+
+def test_analyze_invalid_expression_returns_400(client: TestClient) -> None:
+    r = client.post("/analyze", json={"expr": "this is junk ((((("})
+    assert r.status_code == 400
+    assert "parse" in r.json()["detail"].lower()
+
+
+def test_analyze_missing_expr_field_returns_422(client: TestClient) -> None:
+    r = client.post("/analyze", json={})
+    assert r.status_code == 422
+
+
+def test_analyze_pfaffian_not_eml_flag_set_for_bessel(client: TestClient) -> None:
+    """Bessel functions are Pfaffian but not strict EML — the flag
+    must be True so editor clients can warn the user."""
+    r = client.post("/analyze", json={"expr": "besselj(0, x)"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["is_pfaffian_not_eml"] is True
+
+
 # ---------- factory + meta ---------------------------------------------------
 
 
@@ -124,6 +169,7 @@ def test_build_app_factory_returns_independent_instances() -> None:
     paths = {r.path for r in a1.routes}
     assert "/health" in paths
     assert "/identify" in paths
+    assert "/analyze" in paths
     assert "/registry" in paths
 
 

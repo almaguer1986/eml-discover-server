@@ -50,6 +50,7 @@ curl -X POST http://localhost:8000/identify \
 | `GET`  | `/health`   | Liveness + version snapshot |
 | `GET`  | `/registry` | List all 53 formulas + domains + citations |
 | `POST` | `/identify` | Identify a SymPy expression against the registry |
+| `POST` | `/analyze`  | Pfaffian profile of an expression (cost axes + fingerprint) |
 
 OpenAPI / Swagger UI are served automatically at `/docs`; ReDoc at
 `/redoc`. Both come from FastAPI for free.

@@ -10,6 +10,8 @@ from __future__ import annotations
 from typing import Any
 
 import sympy as sp
+from eml_cost import analyze, fingerprint
+from eml_cost import __version__ as _cost_version
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
@@ -19,7 +21,15 @@ from eml_discover import __version__ as _discover_version
 from ._version import __version__ as _self_version
 
 
-__all__ = ["app", "build_app", "IdentifyRequest", "MatchOut", "IdentifyResponse"]
+__all__ = [
+    "app",
+    "build_app",
+    "IdentifyRequest",
+    "MatchOut",
+    "IdentifyResponse",
+    "AnalyzeRequest",
+    "AnalyzeResponse",
+]
 
 
 class IdentifyRequest(BaseModel):
@@ -78,7 +88,41 @@ class HealthResponse(BaseModel):
     status: str
     server_version: str
     discover_version: str
+    cost_version: str
     registry_size: int
+
+
+class AnalyzeRequest(BaseModel):
+    """Body schema for ``POST /analyze``."""
+
+    expr: str = Field(
+        ...,
+        description="A SymPy expression as a string (sympify-able).",
+        examples=["exp(sin(x))", "1/(1+exp(-x))", "log(x*y)"],
+    )
+
+
+class CorrectionsOut(BaseModel):
+    c_osc: int
+    c_composite: int
+    delta_fused: int
+
+
+class AnalyzeResponse(BaseModel):
+    """Pfaffian profile of an expression — every field of ``AnalyzeResult``
+    flattened for HTTP transport."""
+
+    expression: str
+    pfaffian_r: int
+    max_path_r: int
+    eml_depth: int
+    structural_overhead: int
+    predicted_depth: int
+    is_pfaffian_not_eml: bool
+    corrections: CorrectionsOut
+    fingerprint: str
+    server_version: str
+    cost_version: str
 
 
 def _formula_info(formula: Any) -> FormulaInfo:
@@ -113,6 +157,7 @@ def build_app(*, title: str = "eml-discover-server") -> FastAPI:
             status="ok",
             server_version=_self_version,
             discover_version=_discover_version,
+            cost_version=_cost_version,
             registry_size=len(FORMULAS),
         )
 
@@ -129,6 +174,50 @@ def build_app(*, title: str = "eml-discover-server") -> FastAPI:
             formulas=formulas,
             count=len(formulas),
             discover_version=_discover_version,
+        )
+
+    @api.post("/analyze", response_model=AnalyzeResponse, tags=["analyze"])
+    def analyze_endpoint(payload: AnalyzeRequest) -> AnalyzeResponse:
+        """Compute the Pfaffian profile of a SymPy expression.
+
+        Returns every axis surfaced by :func:`eml_cost.analyze` plus
+        the full fingerprint string. Intended for editor / dashboard
+        clients that want cost insight without installing the
+        Python stack locally.
+        """
+        try:
+            expr = sp.sympify(payload.expr)
+        except (sp.SympifyError, SyntaxError, TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Could not parse expression: {exc}",
+            ) from exc
+
+        try:
+            result = analyze(expr)
+            fp = fingerprint(expr)
+        except Exception as exc:   # noqa: BLE001 — surface back to caller
+            raise HTTPException(
+                status_code=500,
+                detail=f"analyze() failed: {exc}",
+            ) from exc
+
+        return AnalyzeResponse(
+            expression=str(result.expression),
+            pfaffian_r=result.pfaffian_r,
+            max_path_r=result.max_path_r,
+            eml_depth=result.eml_depth,
+            structural_overhead=result.structural_overhead,
+            predicted_depth=result.predicted_depth,
+            is_pfaffian_not_eml=result.is_pfaffian_not_eml,
+            corrections=CorrectionsOut(
+                c_osc=result.corrections.c_osc,
+                c_composite=result.corrections.c_composite,
+                delta_fused=result.corrections.delta_fused,
+            ),
+            fingerprint=fp,
+            server_version=_self_version,
+            cost_version=_cost_version,
         )
 
     @api.post("/identify", response_model=IdentifyResponse, tags=["identify"])

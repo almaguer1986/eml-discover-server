@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.0] — 2026-04-25 — `/analyze` endpoint
+
+### Added
+- **`POST /analyze`** — wraps `eml_cost.analyze` + `eml_cost.fingerprint`.
+  Returns the Pfaffian profile (`pfaffian_r`, `max_path_r`,
+  `eml_depth`, `structural_overhead`, `predicted_depth`,
+  `is_pfaffian_not_eml`, full `corrections` breakdown) plus the
+  axes-and-tail fingerprint string. Lets editor and dashboard
+  clients show cost insight without installing the Python stack
+  locally.
+- `AnalyzeRequest`, `AnalyzeResponse`, `CorrectionsOut` schemas
+  exported from `eml_discover_server`.
+
+### Changed
+- `/health` now reports `cost_version` alongside the existing
+  `server_version`, `discover_version`, `registry_size`. Useful
+  for diagnosing version skew between the rest of the stack.
+- New hard dependency: `eml-cost>=0.2.0`.
+
+### Tests
+- 4 new cases in `tests/test_app.py` covering `/analyze` happy path,
+  parse failure (400), missing field (422), and Pfaffian-not-EML
+  flag for `besselj(0, x)`. Full suite: 18 passing.
+
 ## [0.1.0] — 2026-04-25 — Initial release
 
 FastAPI surface wrapping `eml_discover.identify`.
