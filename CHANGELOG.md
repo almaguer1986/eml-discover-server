@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.0] — 2026-04-25 — `/witness` endpoint (universality witnesses over HTTP)
+
+### Added
+- **`POST /witness`** — wraps `eml_witness.universality_witness`.
+  Returns the JSON-serialised `UniversalityWitness`: Pfaffian
+  profile + registry identification + canonical-equivalent path
+  (when `walk_canonical=True`, default) + savings + Lean status
+  flag (`verified_in_lean`, defaults to `False` until
+  `EML_Universality.lean` is user-verified per the project's Lean
+  writing protocol).
+- `WitnessRequest`, `WitnessResponse` schemas exported.
+- `/health` now reports `witness_version` alongside the existing
+  `cost_version`, `discover_version`, `server_version`.
+- New hard dependency: `eml-witness>=0.1.0`.
+
+### Tests
+- 6 new cases in `tests/test_app.py` (witness happy path with
+  identification, walk_canonical=True path emission,
+  walk_canonical=False skip, parse failure, missing field,
+  Pfaffian-not-EML for `besselj(0, x)`). Full suite: 24 passing.
+
 ## [0.2.0] — 2026-04-25 — `/analyze` endpoint
 
 ### Added

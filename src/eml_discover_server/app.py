@@ -12,6 +12,12 @@ from typing import Any
 import sympy as sp
 from eml_cost import analyze, fingerprint
 from eml_cost import __version__ as _cost_version
+from eml_witness import (
+    UniversalityWitness,
+    universality_witness,
+    witness_to_dict,
+)
+from eml_witness import __version__ as _witness_version
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
@@ -29,6 +35,8 @@ __all__ = [
     "IdentifyResponse",
     "AnalyzeRequest",
     "AnalyzeResponse",
+    "WitnessRequest",
+    "WitnessResponse",
 ]
 
 
@@ -89,7 +97,41 @@ class HealthResponse(BaseModel):
     server_version: str
     discover_version: str
     cost_version: str
+    witness_version: str
     registry_size: int
+
+
+class WitnessRequest(BaseModel):
+    """Body schema for ``POST /witness``."""
+
+    expr: str = Field(
+        ...,
+        description="A SymPy expression as a string (sympify-able).",
+        examples=["1/(1+exp(-x))", "sin(x)**2 + cos(x)**2", "exp(x)/(1+exp(x))"],
+    )
+    walk_canonical: bool = Field(
+        default=True,
+        description=(
+            "Walk a rewrite path to a lower-cost equivalent (when one "
+            "exists). Set False to skip the path computation; the rest "
+            "of the witness still includes profile + identification."
+        ),
+    )
+
+
+class WitnessResponse(BaseModel):
+    """JSON-serialised :class:`UniversalityWitness`. Mirrors the
+    output of :func:`eml_witness.witness_to_dict`."""
+
+    input_expr: str
+    profile: dict[str, Any]
+    identified: dict[str, Any] | None
+    canonical_path: list[dict[str, Any]]
+    savings: int
+    verified_in_lean: bool
+    lean_url: str | None
+    server_version: str
+    witness_version: str
 
 
 class AnalyzeRequest(BaseModel):
@@ -158,6 +200,7 @@ def build_app(*, title: str = "eml-discover-server") -> FastAPI:
             server_version=_self_version,
             discover_version=_discover_version,
             cost_version=_cost_version,
+            witness_version=_witness_version,
             registry_size=len(FORMULAS),
         )
 
@@ -218,6 +261,49 @@ def build_app(*, title: str = "eml-discover-server") -> FastAPI:
             fingerprint=fp,
             server_version=_self_version,
             cost_version=_cost_version,
+        )
+
+    @api.post("/witness", response_model=WitnessResponse, tags=["witness"])
+    def witness_endpoint(payload: WitnessRequest) -> WitnessResponse:
+        """Build a universality witness for the input expression.
+
+        Returns the JSON-serialised :class:`UniversalityWitness`:
+        Pfaffian profile, registry identification (when matched),
+        canonical-equivalent rewrite path (when ``walk_canonical=True``
+        and a lower-cost form exists), savings, and the
+        ``verified_in_lean`` flag (currently False until
+        ``EML_Universality.lean`` is user-verified per the project's
+        Lean writing protocol).
+        """
+        try:
+            expr = sp.sympify(payload.expr)
+        except (sp.SympifyError, SyntaxError, TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Could not parse expression: {exc}",
+            ) from exc
+
+        try:
+            w: UniversalityWitness = universality_witness(
+                expr, walk_canonical=payload.walk_canonical,
+            )
+        except Exception as exc:   # noqa: BLE001
+            raise HTTPException(
+                status_code=500,
+                detail=f"universality_witness() failed: {exc}",
+            ) from exc
+
+        d = witness_to_dict(w)
+        return WitnessResponse(
+            input_expr=d["input_expr"],
+            profile=d["profile"],
+            identified=d["identified"],
+            canonical_path=d["canonical_path"],
+            savings=d["savings"],
+            verified_in_lean=d["verified_in_lean"],
+            lean_url=d["lean_url"],
+            server_version=_self_version,
+            witness_version=_witness_version,
         )
 
     @api.post("/identify", response_model=IdentifyResponse, tags=["identify"])

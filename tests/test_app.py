@@ -23,6 +23,7 @@ def test_health_returns_ok(client: TestClient) -> None:
     assert "server_version" in body
     assert "discover_version" in body
     assert "cost_version" in body
+    assert "witness_version" in body
     assert body["registry_size"] >= 50   # eml-discover 0.2.0 ships 53
 
 
@@ -170,7 +171,66 @@ def test_build_app_factory_returns_independent_instances() -> None:
     assert "/health" in paths
     assert "/identify" in paths
     assert "/analyze" in paths
+    assert "/witness" in paths
     assert "/registry" in paths
+
+
+# ---------- /witness ---------------------------------------------------------
+
+
+def test_witness_for_canonical_sigmoid(client: TestClient) -> None:
+    r = client.post("/witness", json={"expr": "1/(1+exp(-x))"})
+    assert r.status_code == 200
+    body = r.json()
+    for key in (
+        "input_expr", "profile", "identified",
+        "canonical_path", "savings",
+        "verified_in_lean", "lean_url",
+        "server_version", "witness_version",
+    ):
+        assert key in body
+    assert body["verified_in_lean"] is False    # default until Lean lands
+    assert body["profile"]["fingerprint"].startswith("p")
+    # canonical sigmoid IS in the registry
+    assert body["identified"] is not None
+
+
+def test_witness_for_textbook_sigmoid_walks_to_canonical(client: TestClient) -> None:
+    r = client.post("/witness", json={
+        "expr": "exp(x)/(1+exp(x))",
+        "walk_canonical": True,
+    })
+    assert r.status_code == 200
+    body = r.json()
+    assert body["canonical_path"]
+    assert body["savings"] >= 1
+
+
+def test_witness_walk_canonical_false_skips_path(client: TestClient) -> None:
+    r = client.post("/witness", json={
+        "expr": "exp(x)/(1+exp(x))",
+        "walk_canonical": False,
+    })
+    assert r.status_code == 200
+    assert r.json()["canonical_path"] == []
+
+
+def test_witness_invalid_expression_returns_400(client: TestClient) -> None:
+    r = client.post("/witness", json={"expr": "this is not valid sympy ((((("})
+    assert r.status_code == 400
+    assert "parse" in r.json()["detail"].lower()
+
+
+def test_witness_missing_expr_returns_422(client: TestClient) -> None:
+    r = client.post("/witness", json={})
+    assert r.status_code == 422
+
+
+def test_witness_pfaffian_not_eml_for_bessel(client: TestClient) -> None:
+    r = client.post("/witness", json={"expr": "besselj(0, x)"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["profile"]["is_pfaffian_not_eml"] is True
 
 
 def test_openapi_schema_available(client: TestClient) -> None:
