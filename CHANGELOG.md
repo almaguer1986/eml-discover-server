@@ -4,6 +4,35 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.1] — 2026-04-25 — Security hardening (sympify, length cap, error masking)
+
+### Security
+- **CRITICAL fix: replaced `sp.sympify()` with hardened
+  `parse_expr()`** for every endpoint that accepts user-supplied
+  expression strings (`/identify`, `/analyze`, `/witness`).
+  `sympify` is documented as `eval`-equivalent — under the
+  default parser it falls back to Python's `eval()` on
+  non-trivial input, allowing constructs like
+  `__import__('os').system(...)` to execute remote code on the
+  server. `parse_expr` uses a dedicated tokeniser + transformations
+  pipeline with no `eval` path while still accepting the standard
+  mathematical syntax (`sin`, `exp`, `log`, etc.) SymPy users
+  expect.
+- **Added `max_length=2000` to every `expr` Pydantic field**.
+  Caps DoS via huge expression strings forced through the SymPy
+  parser.
+- **Stripped exception detail from 400 responses**. The handler
+  was echoing `str(exc)` which can leak SymPy traceback fragments
+  + internal module paths. Now returns a generic
+  "Expression could not be parsed." with the full exception
+  logged at DEBUG level server-side.
+
+### Note
+Rate limiting (e.g. `slowapi`) and auth are NOT included in this
+hotfix; both remain prerequisites for deploying the server to a
+public network. Deferred to v0.4.0 alongside the hosting
+decision.
+
 ## [0.3.0] — 2026-04-25 — `/witness` endpoint (universality witnesses over HTTP)
 
 ### Added

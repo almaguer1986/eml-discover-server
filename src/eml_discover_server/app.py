@@ -9,6 +9,9 @@ from __future__ import annotations
 
 from typing import Any
 
+import logging
+import tokenize
+
 import sympy as sp
 from eml_cost import analyze, fingerprint
 from eml_cost import __version__ as _cost_version
@@ -20,11 +23,46 @@ from eml_witness import (
 from eml_witness import __version__ as _witness_version
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
+from sympy.parsing.sympy_parser import parse_expr, standard_transformations
 
 from eml_discover import FORMULAS, identify
 from eml_discover import __version__ as _discover_version
 
 from ._version import __version__ as _self_version
+
+
+_log = logging.getLogger("eml_discover_server")
+
+# Hardened expression parser. Untrusted network input MUST NOT be fed
+# directly through `sp.sympify()` — that helper invokes the Python
+# parser with the full `sympy.*` namespace exposed, which makes
+# constructs like `__import__('os').system(...)` evaluate to remote
+# code execution. parse_expr with empty local/global dicts plus a
+# fixed transformations tuple closes the eval-equivalence gap. Length
+# is also capped on every Pydantic schema (max_length=2000).
+_TRANSFORMATIONS = standard_transformations
+
+
+def _safe_parse(text: str) -> sp.Basic:
+    """Parse user-supplied SymPy text under a non-eval grammar.
+
+    ``sympy.sympify`` is documented as ``eval``-equivalent: it falls
+    back to Python's ``eval`` when the input doesn't match SymPy's
+    string-parsing rules, so ``__import__('os').system(...)`` in
+    untrusted input becomes remote code execution. ``parse_expr``
+    instead uses a dedicated tokeniser + transformations pipeline
+    with no ``eval`` path, blocking that vector while still
+    accepting the standard mathematical syntax SymPy users expect
+    (``sin``, ``exp``, ``log``, ``Symbol``, etc.).
+
+    Raises a ``ValueError`` (caught by the endpoints and reported as
+    a generic 400) on any parse failure.
+    """
+    return parse_expr(
+        text,
+        transformations=_TRANSFORMATIONS,
+        evaluate=False,
+    )
 
 
 __all__ = [
@@ -45,7 +83,8 @@ class IdentifyRequest(BaseModel):
 
     expr: str = Field(
         ...,
-        description="A SymPy expression as a string (sympify-able).",
+        max_length=2000,
+        description="A SymPy expression as a string (sympify-able). Capped at 2000 chars.",
         examples=["1/(1+exp(-x))", "log(u**2)", "sin(x)**2 + cos(x)**2"],
     )
     max_results: int = Field(
@@ -106,7 +145,8 @@ class WitnessRequest(BaseModel):
 
     expr: str = Field(
         ...,
-        description="A SymPy expression as a string (sympify-able).",
+        max_length=2000,
+        description="A SymPy expression as a string (sympify-able). Capped at 2000 chars.",
         examples=["1/(1+exp(-x))", "sin(x)**2 + cos(x)**2", "exp(x)/(1+exp(x))"],
     )
     walk_canonical: bool = Field(
@@ -139,7 +179,8 @@ class AnalyzeRequest(BaseModel):
 
     expr: str = Field(
         ...,
-        description="A SymPy expression as a string (sympify-able).",
+        max_length=2000,
+        description="A SymPy expression as a string (sympify-able). Capped at 2000 chars.",
         examples=["exp(sin(x))", "1/(1+exp(-x))", "log(x*y)"],
     )
 
@@ -229,11 +270,17 @@ def build_app(*, title: str = "eml-discover-server") -> FastAPI:
         Python stack locally.
         """
         try:
-            expr = sp.sympify(payload.expr)
-        except (sp.SympifyError, SyntaxError, TypeError, ValueError) as exc:
+            expr = _safe_parse(payload.expr)
+        except (
+            sp.SympifyError, SyntaxError, TypeError,
+            ValueError, tokenize.TokenError,
+        ) as exc:
+            _log.debug("expression parse failed: %s", exc)
+            # Generic message — do not echo SymPy traceback fragments
+            # back to potentially-untrusted clients.
             raise HTTPException(
                 status_code=400,
-                detail=f"Could not parse expression: {exc}",
+                detail="Expression could not be parsed.",
             ) from exc
 
         try:
@@ -276,11 +323,17 @@ def build_app(*, title: str = "eml-discover-server") -> FastAPI:
         Lean writing protocol).
         """
         try:
-            expr = sp.sympify(payload.expr)
-        except (sp.SympifyError, SyntaxError, TypeError, ValueError) as exc:
+            expr = _safe_parse(payload.expr)
+        except (
+            sp.SympifyError, SyntaxError, TypeError,
+            ValueError, tokenize.TokenError,
+        ) as exc:
+            _log.debug("expression parse failed: %s", exc)
+            # Generic message — do not echo SymPy traceback fragments
+            # back to potentially-untrusted clients.
             raise HTTPException(
                 status_code=400,
-                detail=f"Could not parse expression: {exc}",
+                detail="Expression could not be parsed.",
             ) from exc
 
         try:
@@ -315,11 +368,17 @@ def build_app(*, title: str = "eml-discover-server") -> FastAPI:
         form for round-trip verification.
         """
         try:
-            expr = sp.sympify(payload.expr)
-        except (sp.SympifyError, SyntaxError, TypeError, ValueError) as exc:
+            expr = _safe_parse(payload.expr)
+        except (
+            sp.SympifyError, SyntaxError, TypeError,
+            ValueError, tokenize.TokenError,
+        ) as exc:
+            _log.debug("expression parse failed: %s", exc)
+            # Generic message — do not echo SymPy traceback fragments
+            # back to potentially-untrusted clients.
             raise HTTPException(
                 status_code=400,
-                detail=f"Could not parse expression: {exc}",
+                detail="Expression could not be parsed.",
             ) from exc
 
         try:
