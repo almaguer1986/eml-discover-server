@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.2] — 2026-04-25 — `verified_in_lean=True` propagated via eml-witness 0.2.0
+
+### Changed
+- Bump `eml-witness` floor from `>=0.1.0` to `>=0.2.0` to pin the
+  `verified_in_lean=True` default that flipped in eml-witness
+  0.2.0. `POST /witness` responses now carry `verified_in_lean=True`
+  and a populated `lean_url` field for any expression in the EML
+  class. Bessel / Airy / Lambert W still return
+  `verified_in_lean=False` and `lean_url=null` because they're
+  outside the Lean theorem's scope.
+- `/health` `witness_version` now reports `0.2.0`, making the
+  flag flip visible at the health-probe level.
+
+### Tests
+- 24 cases — `test_witness_for_canonical_sigmoid` and
+  `test_witness_pfaffian_not_eml_for_bessel` updated to assert
+  the new flag values + lean_url presence. mypy strict clean.
+
 ## [0.3.1] — 2026-04-25 — Security hardening (sympify, length cap, error masking)
 
 ### Security

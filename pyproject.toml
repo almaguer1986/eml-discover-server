@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eml-discover-server"
-version = "0.3.1"
+version = "0.3.2"
 description = "FastAPI service wrapping eml_discover.identify, eml_cost.analyze, and eml_witness.universality_witness."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -36,7 +36,7 @@ dependencies = [
     "sympy>=1.12",
     "eml-cost>=0.2.0",
     "eml-discover>=0.2.0",
-    "eml-witness>=0.1.0",
+    "eml-witness>=0.2.0",
 ]
 
 [project.optional-dependencies]

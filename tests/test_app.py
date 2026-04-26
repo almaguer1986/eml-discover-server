@@ -189,7 +189,10 @@ def test_witness_for_canonical_sigmoid(client: TestClient) -> None:
         "server_version", "witness_version",
     ):
         assert key in body
-    assert body["verified_in_lean"] is False    # default until Lean lands
+    # Sigmoid is in the EML class — Universality.lean was verified
+    # by the user on 2026-04-25, so verified_in_lean is True now.
+    assert body["verified_in_lean"] is True
+    assert body["lean_url"] is not None
     assert body["profile"]["fingerprint"].startswith("p")
     # canonical sigmoid IS in the registry
     assert body["identified"] is not None
@@ -231,6 +234,11 @@ def test_witness_pfaffian_not_eml_for_bessel(client: TestClient) -> None:
     assert r.status_code == 200
     body = r.json()
     assert body["profile"]["is_pfaffian_not_eml"] is True
+    # Bessel is OUTSIDE the EML class — verified_in_lean stays
+    # False because the universality theorem covers EML-elementary
+    # functions only.
+    assert body["verified_in_lean"] is False
+    assert body["lean_url"] is None
 
 
 def test_openapi_schema_available(client: TestClient) -> None:
